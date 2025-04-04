@@ -8,6 +8,7 @@ from collections.abc import MutableSequence
 from functools import cached_property
 from hashlib import sha1
 import latextools
+import stim
 
 # %% ../nbs/03_circuit.ipynb 4
 GATES = {
@@ -16,6 +17,31 @@ GATES = {
     "q2": {"CNOT", "MSd"},
     "meas": {"measure"}
 }
+
+
+
+# 
+GATES_stim = {
+    #stim doesn't consider "init" an operation
+    
+    "q1": {"I", "X", "Y", "Z",
+    "C_NXYZ", "C_NZYX", "C_XNYZ", "C_XYNZ", "C_XYZ", "C_ZNYX", "C_ZYNX", "C_ZYX",
+    "H", "H_NXY", "H_NXZ", "H_NYZ", "H_XY", "H_XZ", "H_YZ",
+    "S", "S_DAG",
+    "SQRT_X", "SQRT_X_DAG", "SQRT_Y", "SQRT_Y_DAG", "SQRT_Z", "SQRT_Z_DAG"
+                    }, 
+        
+    "q2":{"CNOT", "CX", "CXSWAP", "CY", "CZ", "CZSWAP",
+    "II", "ISWAP", "ISWAP_DAG",
+    "SQRT_XX", "SQRT_XX_DAG", "SQRT_YY", "SQRT_YY_DAG", "SQRT_ZZ", "SQRT_ZZ_DAG",
+    "SWAP", "SWAPCX", "SWAPCZ",
+    "XCX", "XCY", "XCZ", "YCX", "YCY", "YCZ", "ZCX", "ZCY", "ZCZ"
+                            }, 
+    
+    "meas":{"M", "MR", "MRX", "MRY", "MRZ", "MX", "MY", "MZ", "R", "RX", "RY", "RZ", 
+                    "MXX", "MYY", "MZZ", "MPP", "SPP", "SPP_DAG"}}
+
+
 
 # %% ../nbs/03_circuit.ipynb 5
 def unpack(seq):
@@ -175,3 +201,67 @@ class Circuit(MutableSequence):
     def draw(self, path=None, scale=2):
         """Draw the circuit"""
         return draw_circuit(self, path, scale)
+    
+    
+    
+class StimCircuit(stim.Circuit):
+    """Custom implementation of stim.Circuit
+    
+    Attributes
+    ----------
+    _ticks : list of dict
+        List of ticks in the circuit
+    noisy : bool
+        If true, circuit is subject to noise during sampling
+    ff_deterministic : bool
+        If true, the measurement result of the circuit in the
+        fault-free case is always deterministic
+    qubits : set
+        Set of qubits "touched" by circuit
+    n_qubits : int
+        Numbers of qubits "touched" by circuit
+    n_ticks : int
+        Number of ticks in circuit
+    id : str
+        Unique circuit identifier
+    """
+
+    def __init__(self, circuit, noisy=True):
+        super().__init__(circuit)
+        self.noisy = noisy
+        
+        measured_qubits = set()
+        for instruction in self:
+            if instruction.name in ("M", "MR"):  # Measurement operations
+                for x in instruction.target_groups():
+                    for y in x:
+                        measured_qubits.update([y.value])
+                        
+        self.n_measurements = len(measured_qubits)
+        self.measured_qubits = list(measured_qubits)
+        
+    
+    @cached_property
+    def qubits(self):  
+        """Set of qubits used in circuit"""
+        return set(unpack(self._ticks))
+    
+    @cached_property
+    def n_qubits(self):
+        """Number of qubits used in circuit"""
+        return len(self.qubits)
+    
+    @cached_property
+    def n_ticks(self):
+        """Number of ticks"""
+        return len(self._ticks)
+    
+    @property
+    def id(self):
+        """Unique circuit identifier"""
+        return sha1((repr(self)).encode('UTF-8')).hexdigest()[:5]
+
+    def draw(self, path=None, scale=2):
+        """Draw the circuit"""
+        return draw_circuit(self, path, scale)
+        

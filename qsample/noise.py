@@ -5,7 +5,8 @@ __all__ = ['DEPOLAR1', 'DEPOLAR2', 'XFLIP', 'ZFLIP', 'ErrorModel', 'E0', 'E1', '
 
 # %% ../nbs/07_noise.ipynb 3
 import numpy as np
-from .circuit import Circuit, GATES, unpack
+import stim
+from .circuit import Circuit, StimCircuit, GATES, GATES_stim, unpack
 
 # %% ../nbs/07_noise.ipynb 5
 DEPOLAR1 = {"X", "Y", "Z"}
@@ -45,19 +46,28 @@ class ErrorModel:
     def run(self, circuit, fgroups):
         """Generate new Circuit of same length as `Circuit` with faults generated
         by `self.generate` and corresponding location for each group in fgroups."""
-        fault_circuit = Circuit([{} for _ in range(circuit.n_ticks)])
-        
-        for (tidx, qb), fop in self.generate(fgroups, circuit):
-            if isinstance(qb, tuple):
-                for q,op in zip(qb,fop):
-                    if op == "I": continue
-                    qbs = fault_circuit[tidx].get(op,set())
-                    qbs.add(q)
-                    fault_circuit[tidx][op] = qbs
-            elif isinstance(qb, int):
-                qbs = fault_circuit[tidx].get(fop,set())
-                qbs.add(qb)
-                fault_circuit[tidx][fop] = qbs
+        if isinstance(circuit, StimCircuit):
+            fault_circuit = circuit.copy()
+            for (tidx, qb), fop in self.generate(fgroups, circuit):
+                if isinstance(qb, tuple):
+                    for q,op in zip(qb,fop):
+                        if op == "I": continue
+                        fault_circuit.insert(tidx, stim.CircuitInstruction('{} {}'.format(op, q)))
+                elif isinstance(qb, int):
+                    fault_circuit.insert(tidx, stim.CircuitInstruction('{} {}'.format(fop, qb)))
+        else:
+            fault_circuit = Circuit([{} for _ in range(circuit.n_ticks)])
+            for (tidx, qb), fop in self.generate(fgroups, circuit):
+                if isinstance(qb, tuple):
+                    for q,op in zip(qb,fop):
+                        if op == "I": continue
+                        qbs = fault_circuit[tidx].get(op,set())
+                        qbs.add(q)
+                        fault_circuit[tidx][op] = qbs
+                elif isinstance(qb, int):
+                    qbs = fault_circuit[tidx].get(fop,set())
+                    qbs.add(qb)
+                    fault_circuit[tidx][fop] = qbs
         return fault_circuit 
 
 # %% ../nbs/07_noise.ipynb 7
@@ -79,6 +89,19 @@ class E1(ErrorModel):
     groups = ["q"]
     
     def group(self, circuit):
+        if isinstance(circuit, StimCircuit):
+            gates = GATES_stim["q1"] | GATES_stim["q2"]
+            gate_list = []
+            for ti,t in enumerate(circuit):
+                if t.name in gates:
+                    for x in t.target_groups():
+                        if len(x)==1:
+                            entry = x[0].value
+                        elif len(x)==2:
+                            entry = (x[0].value, x[1].value)
+                        gate_list.append((ti, entry))
+            return {"q": gate_list}
+                
         gates = GATES["q1"] | GATES["q2"]
         return {"q": [(ti,q) for ti,t in enumerate(circuit) for g,qs in t.items() for q in qs if g in gates]}
     
