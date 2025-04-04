@@ -7,7 +7,8 @@ __all__ = ['SubsetSampler']
 from .tree import Tree, Variable, Constant, Delta
 import qsample.math as math
 import qsample.utils as utils
-
+import stim
+from hashlib import sha1
 from ..callbacks import CallbackList
 from tqdm.auto import tqdm
 
@@ -64,6 +65,7 @@ class SubsetSampler:
         self.partitions = {cid: self.err_model.group(circuit) for cid, circuit in self.protocol.circuits.items()}
         constants = {cid: math.subset_probs(circuit, self.err_model, self.p_max) for cid, circuit in protocol.circuits.items()}
         self.tree = Tree(constants, L)
+        
       
     def err_params_to_matrix(self, err_params):
         sorted_params = [err_params[k] for k in self.err_model.groups]
@@ -82,8 +84,6 @@ class SubsetSampler:
         _constants = self.tree.constants
         prob = self.err_params if err_params == None else self.err_params_to_matrix(err_params)
         self.tree.constants = {cid: math.subset_probs(circuit, self.err_model, prob) for cid, circuit in self.protocol.circuits.items()}
-
-        
         p_L = self.tree.subtree_sum(self.tree.root, self.tree.marked)
         delta = self.tree.delta
         var = self.tree.var(mode=1)
@@ -137,16 +137,27 @@ class SubsetSampler:
         callbacks.on_sampler_begin()
         
         for _ in tqdm(range(n_shots), desc=f"p={tuple(map('{:.2e}'.format, self.p_max))}"):
+            tableau = None
             callbacks.on_protocol_begin()
             pnode = self.protocol.root # get protocol start node
             state = self.simulator(len(self.protocol.qubits)) # init state
             msmt_hist = {} # init measurement history
             tnode = None # init tree node
-            
             while True:
                 callbacks.on_circuit_begin()
+             
                 
                 pnode, circuit = self.protocol.successor(pnode, msmt_hist)
+                
+                #STIM BEGINS HERE
+                is_stim = isinstance(circuit, stim.Circuit)
+                
+                if is_stim:
+                    state = stim.TableauSimulator()
+                    if tableau is not None: #If we already have a state, use it for this circuit
+                        state.set_inverse_tableau(tableau)
+                #STIM ENDS HERE
+         
                 tnode = self.tree.add(name=pnode, parent=tnode, node_type=Variable)
                 tnode.count += 1
                                 
@@ -160,15 +171,40 @@ class SubsetSampler:
                         tnode.invariant = True
                 except:
                     pass
-                        
+                 
                 if circuit != None:
+                    
                     tnode.circuit_id = circuit.id
                     
                     if not circuit.noisy:
-                        msmt = state.run(circuit)
+                        
+                        # STIM BEGINS HERE
+                        if is_stim:
+                            state.do(circuit)
+                            if circuit.n_measurements == 0:
+                                msmt = None
+                            else:
+                                
+                                msmt = []
+                                for i in range(circuit.n_measurements):
+                                    msmt.append(state.measure(circuit.measured_qubits[i]))
+                                    
+                                #Conversion from binary to int    
+                                msmt = np.dot(np.array(msmt)[::-1], 2**np.arange(circuit.n_measurements))
+                                
+                         #STIM ENDS HERE       
+
+                        else:
+                            msmt = state.run(circuit)
+
                         # add 0-subset for not noisy circuits
                         tnode = self.tree.add(name=(0,), parent=tnode, node_type=Constant, const_val=1)
                         tnode.count += 1
+                        
+                        #STIM BEGINS HERE
+                        if is_stim:
+                            tableau = state.current_inverse_tableau()
+                        #STIM ENDS HERE
                     else:
                         
                         # Circuit node
@@ -187,12 +223,27 @@ class SubsetSampler:
                                                 self.tree.add(name=circ_virt_sskey, parent=tnode_, node_type=Constant)
                                             self.tree.add(name='δ', node_type=Delta, parent=tnode_)
                         self.tree.add(name='δ', node_type=Delta, parent=tnode)
-             
                         subset = self._choose_subset(tnode, circuit)
                         fault_locs = self.err_model.choose_w(self.partitions[circuit.id], subset)
+                      
                         fault_circuit = self.err_model.run(circuit, fault_locs)
-                        msmt = state.run(circuit, fault_circuit)
-                                    
+                        
+                        #STIM BEGINS HERE
+                        if is_stim:
+                            state.do(fault_circuit)
+                            if circuit.n_measurements == 0:
+                                msmt = None
+                            else:
+                                
+                                msmt = []
+                                for i in range(circuit.n_measurements):
+                                    msmt.append(state.measure(circuit.measured_qubits[i]))
+                                
+                                #Conversion from binary to int    
+                                msmt = np.dot(np.array(msmt)[::-1], 2**np.arange(circuit.n_measurements))
+                        #STIM ENDS HERE
+                        else:
+                            msmt = state.run(circuit, fault_circuit)
                         tnode = self.tree.add(name=subset, parent=tnode, node_type=Constant)
                         tnode.count += 1
                         
@@ -222,8 +273,15 @@ class SubsetSampler:
                                     tnode_ = self.tree.add(name=vcirc_name, parent=tnode, node_type=Variable, circuit_id=circuit_.id)
                                     delta_ = self.tree.add(name='δ', node_type=Delta, parent=tnode_)
                                     delta_.value = delta_value # custom delta value
-                    msmt = msmt if msmt==None else int(msmt,2) # convert to int for comparison in checks
+                    #STIM HERE
+                    if not is_stim:
+                        msmt = msmt if msmt==None else int(msmt,2) # convert to int for comparison in checks
                     msmt_hist[pnode] = msmt_hist.get(pnode, []) + [msmt]
+
+                    #STIM HERE
+                    if is_stim:
+                        tableau = state.current_inverse_tableau() # New state is the current state
+                            
                 else:
                     tnode.invariant = False
                     if path_weight <= (1 if self.protocol.fault_tolerant else 0):

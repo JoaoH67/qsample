@@ -9,6 +9,7 @@ import qsample.math as math
 import numpy as np
 import itertools as it
 import pydot
+import stim
 
 from fastcore.test import *
 
@@ -340,7 +341,8 @@ class Tree:
                 return node.const_val
             else:
                 # see Eq. 2 in paper
-                return self.constants[node.parent.circuit_id][node.name]
+                result = self.constants[node.parent.circuit_id][node.name]
+                return result
         elif type(node) == Delta:
             
             if node.parent.count == 0:
@@ -355,6 +357,7 @@ class Tree:
                 acc = 1.0
                 for n in node.siblings:
                     acc -= self.constants[node.parent.circuit_id][n.name]
+                    
                 return acc
         else:
             raise TypeError(f"Unknown node type: {type(node)}")
