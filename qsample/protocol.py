@@ -9,9 +9,8 @@ from hashlib import sha1
 from simpleeval import simple_eval
 from functools import cached_property
 import matplotlib.pyplot as plt
-import stim
 
-from .circuit import Circuit, StimCircuit, unpack
+from .circuit import Circuit, unpack
 
 # %% ../nbs/04_protocol.ipynb 4
 def draw_protocol(protocol, path=None, legend=False, figsize=(6,6), label_offset=(0.05,0.05)):
@@ -100,13 +99,7 @@ class Protocol(nx.DiGraph):
 
     @cached_property
     def qubits(self):
-        if isinstance(list(self.circuits.values())[0], StimCircuit):
-            qubits_used = set()
-            for c in self.circuits.values():
-                for op in c:
-                    qubits_used.update(op.targets_copy())
-
-            return [x.value for x in qubits_used]
+       
         return set(qb for c in self.circuits.values() for qb in unpack(c))
     
     @cached_property
@@ -197,9 +190,7 @@ class Protocol(nx.DiGraph):
             if self.out_degree(succ_name) == 0:
                 # Terminal node reached: End protocol
                 return succ_name, None
-            if isinstance(check_return, Circuit) or isinstance(check_return, StimCircuit):
-                # Correction node: We only allow noise-free correction.
-                return succ_name, check_return
+         
             return succ_name, self.get_circuit(succ_name)
         
     def draw(self, *args, **kwargs):
