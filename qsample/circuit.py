@@ -48,7 +48,7 @@ stim2qs_GATES = {
 
 qs2stim_GATES = {
     "I":"I", "X":"X", "Y":"Y", "Z":"Z",
-    "H":"H", "S":"S", "S_DAG":"Sd",
+    "H":"H", "S":"S", "Sd":"S_DAG",
     "Q":"SQRT_X", "Qd":"SQRT_X_DAG", "R":"SQRT_Y", "Rd":"SQRT_Y_DAG", "S":"SQRT_Z", "Sd":"SQRT_Z_DAG",
     "CNOT":"CNOT"
 }
@@ -215,8 +215,65 @@ class Circuit(MutableSequence):
             self._ticks = ticks if ticks else [] # Must do this way, else keeps appending to same instance
         self.noisy = noisy
     
+    def from_stim_circuit(self, stim_str):
+        ticks = stim_str
+        self._ticks = ["foo"]
+            
+        for instruction in ticks.split('\n'):
+            instruction_list = instruction.split(' ')
+            is_target = False
+            target_list = []
+            for i in instruction_list:
+                if len(i)!=0 and not is_target:
+                    name = i
+                    is_target = True
+                elif len(i)!=0:
+                    target_list.append(int(i))
+
+            if name in GATES_stim["q1"]:
+                try:
+                    qs_gate = stim2qs_GATES[name]
+                except KeyError:
+                    print("Gate {} not implemented in QSample".format(name))
+                    break
+
+                targets = set()
+                for target in target_list:
+                    targets.update({target})
+                tick = {qs_gate: targets}
+                self._ticks.insert(-1, tick)
+
+            elif name in GATES_stim["q2"]:
+                try:
+                    qs_gate = stim2qs_GATES[name]
+                except KeyError:
+                    print("Gate {} not implemented in QSample".format(name))
+                    break
+
+                for target in pair_elements(target_list):
+                    tick = {qs_gate: {target}}
+                    self._ticks.insert(-1, tick)
+
+            elif name in GATES_stim["meas"]:
+                targets = set()
+                for target in target_list:
+                    targets.update({target})
+
+                if name=="M":
+                    self._ticks.insert(-1, {"measure": targets})
+                elif name=="R":
+                    self._ticks.insert(-1, {"init": targets})
+                elif name=="MR":
+                    self._ticks.insert(-1, {"measure": targets})
+                    self._ticks.insert(-1, {"init": targets})
+                else:
+                    print("Gate {} not implemented in QSample".format(name))
+                    break
+        self.__delitem__(-1)
+        return self
+        
     @cached_property
-    def stim_circuit(self):  
+    def to_stim_circuit(self):  
         """Cached STIM circuit"""
         return stim.Circuit(qs2stim(self))
 
