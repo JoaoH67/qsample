@@ -4,33 +4,90 @@ from copy import deepcopy
 from ..circuit import qs2stim, stim2qs, Circuit
 
 
-class StimSimulator():
+from .mixin import CircuitRunnerMixin
+
+import random
+from typing import Union, Any
+
+class MeasureResult:
+    """A measurement's output and whether it was random or not."""
+
+    def __init__(self, value: bool, determined: bool):
+        self.value = bool(value)
+        self.determined = bool(determined)
+
+    def __bool__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, (bool, int)):
+            return self.value == other
+        if isinstance(other, MeasureResult):
+            return self.value == other.value and self.determined == other.determined
+        return NotImplemented
+
+    def __str__(self):
+        return '{} ({})'.format(self.value,
+                                ['random', 'determined'][self.determined])
+
+    def __repr__(self):
+        return 'MeasureResult(value={!r}, determined={!r})'.format(
+            self.value,
+            self.determined)
+
+# %% ../../nbs/05b_sim.stabilizer.ipynb 5
+class StimSimulator(CircuitRunnerMixin):
     """The bare minimum needed for the CHP simulation."""
     
-    def __init__(self, num_qubits) -> None:
-        """Initialize to |0>"""
+    def __init__(self, num_qubits):
         self.state = stim.TableauSimulator()
-            
+    def I(self, qubit: int) -> None:
+        pass
+    def X(self, qubit: int) -> None:
+        """X gate"""
+        self.state.x(qubit)
+    def Y(self, qubit: int) -> None:
+        """Y gate"""
+        self.state.y(qubit)    
+    def Z(self, qubit: int) -> None:
+        """Z gate"""
+        self.state.z(qubit)
+    def H(self, qubit:int) -> None:
+        """H gate"""
+        self.state.h(qubit)
+    def Q(self, qubit:int) -> None:
+        """Q gate"""
+        self.state.q(qubit)
+    def Qd(self, qubit:int) -> None:
+        """Qd gate"""
+        self.state.q_dag(qubit)
+    def R(self, qubit:int) -> None:
+        """R gate"""
+        self.state.r(qubit)
+    def Rd(self, qubit:int) -> None:
+        """Rd gate"""
+        self.state.r_dag(qubit)
+    def S(self, qubit:int) -> None:
+        """S gate"""
+        self.state.s(qubit)
+    def Sd(self, qubit:int) -> None:
+        """Sd gate"""
+        self.state.s_dag(qubit)
 
-    def run(self, circuit, fault_circuit=None):
-        new_circuit = deepcopy(circuit)
-        if fault_circuit:
-            offset = 0
-            for i, j in enumerate(fault_circuit._ticks):
-                if len(j):
-                    new_circuit.insert(i+offset, j)
-                    offset+=1
-        stim_circuit = stim.Circuit(qs2stim(new_circuit))
-        self.state.do(stim_circuit)
-        if circuit.n_measurements == 0:
-            msmt = bin(0)
-        else:
+    def CNOT(self, control: int, target: int) -> None:
+        """CNOT gate"""
+        self.state.cnot(control, target)
 
-            msmt = []
-            for i in range(circuit.n_measurements):
-                msmt.append(self.state.measure(circuit.measured_qubits[i]))
-   
-            msmt = bin(np.dot(np.array(msmt)[::-1], 2**np.arange(circuit.n_measurements)))
-        return msmt
-            
-        
+    def init(self, qubit: int) -> None:
+        """R = reset"""
+        self.state.reset(qubit)
+    def measure(self, qubit: int) -> None:
+        """R = reset"""
+        self.state.measure(qubit)
+        result = self.state.measure(qubit)
+        return MeasureResult(result, determined=True)
+
+
+
+
+
