@@ -7,6 +7,8 @@ __all__ = ['GATES', 'unpack', 'draw_circuit', 'Circuit']
 from collections.abc import MutableSequence
 from functools import cached_property
 from hashlib import sha1
+import qiskit
+from qiskit.qasm import Qasm
 import latextools
 import stim
 
@@ -51,6 +53,11 @@ qs2stim_GATES = {
     "H":"H", "S":"S", "Sd":"S_DAG",
     "Q":"SQRT_X", "Qd":"SQRT_X_DAG", "R":"SQRT_Y", "Rd":"SQRT_Y_DAG", "S":"SQRT_Z", "Sd":"SQRT_Z_DAG",
     "CNOT":"CNOT"
+}
+
+qiskit2qs_GATES = {
+    "I":"I", "x":"X", "y":"Y", "z":"Z",
+    "h":"H","cx":"CNOT","measure":"measure","reset":"init"
 }
 
 # %% ../nbs/03_circuit.ipynb 5
@@ -234,7 +241,7 @@ class Circuit(MutableSequence):
                 try:
                     qs_gate = stim2qs_GATES[name]
                 except KeyError:
-                    print("Gate {} not implemented in QSample".format(name))
+                    raise ValueError(f"No correspondence found for: {name}")
                     break
 
                 targets = set()
@@ -247,7 +254,7 @@ class Circuit(MutableSequence):
                 try:
                     qs_gate = stim2qs_GATES[name]
                 except KeyError:
-                    print("Gate {} not implemented in QSample".format(name))
+                    raise ValueError(f"No correspondence found for: {name}")
                     break
 
                 for target in pair_elements(target_list):
@@ -267,8 +274,53 @@ class Circuit(MutableSequence):
                     self._ticks.insert(-1, {"measure": targets})
                     self._ticks.insert(-1, {"init": targets})
                 else:
-                    print("Gate {} not implemented in QSample".format(name))
+                    raise ValueError(f"No correspondence found for: {name}")
                     break
+        self.__delitem__(-1)
+        return self
+    
+    def from_qasm_circuit(self, qasm_str):
+        qc = qiskit.QuantumCircuit.from_qasm_str(qasm_str)
+        self._ticks = ["foo"]
+
+        for instr, qargs, _ in qc.data:
+            name = instr.name
+            qubits = [q.index for q in qargs]
+            
+            try:
+                qs_gate = qiskit2qs_GATES[name]
+                if len(qubits)==2:
+                    target = (qubits[0],qubits[1])
+                else:
+                    target = qubits[0]
+                tick = {qs_gate: {target}}
+                self._ticks.insert(-1, tick)
+            except KeyError:
+                raise ValueError(f"No correspondence found for: {name}")
+                break
+
+        self.__delitem__(-1)
+        return self
+    
+    def from_qiskit_circuit(self, qc):
+        self._ticks = ["foo"]
+
+        for instr, qargs, _ in qc.data:
+            name = instr.name
+            qubits = [q.index for q in qargs]
+            
+            try:
+                qs_gate = qiskit2qs_GATES[name]
+                if len(qubits)==2:
+                    target = (qubits[0],qubits[1])
+                else:
+                    target = qubits[0]
+                tick = {qs_gate: {target}}
+                self._ticks.insert(-1, tick)
+            except KeyError:
+                raise ValueError(f"No correspondence found for: {name}")
+                break
+
         self.__delitem__(-1)
         return self
         
