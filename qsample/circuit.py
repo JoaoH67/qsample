@@ -40,12 +40,28 @@ GATES_stim = {
     "meas":{"M", "MR", "MRX", "MRY", "MRZ", "MX", "MY", "MZ", "R", "RX", "RY", "RZ", 
                     "MXX", "MYY", "MZZ", "MPP", "SPP", "SPP_DAG"}}
 
+GATES_stim_unpacked = {
+    
+"I", "X", "Y", "Z",
+    "C_NXYZ", "C_NZYX", "C_XNYZ", "C_XYNZ", "C_XYZ", "C_ZNYX", "C_ZYNX", "C_ZYX",
+    "H", "H_NXY", "H_NXZ", "H_NYZ", "H_XY", "H_XZ", "H_YZ",
+    "S", "S_DAG",
+    "SQRT_X", "SQRT_X_DAG", "SQRT_Y", "SQRT_Y_DAG", "SQRT_Z", "SQRT_Z_DAG",
+    "CNOT", "CX", "CXSWAP", "CY", "CZ", "CZSWAP",
+    "II", "ISWAP", "ISWAP_DAG",
+    "SQRT_XX", "SQRT_XX_DAG", "SQRT_YY", "SQRT_YY_DAG", "SQRT_ZZ", "SQRT_ZZ_DAG",
+    "SWAP", "SWAPCX", "SWAPCZ",
+    "XCX", "XCY", "XCZ", "YCX", "YCY", "YCZ", "ZCX", "ZCY", "ZCZ",
+    "M", "MR", "MRX", "MRY", "MRZ", "MX", "MY", "MZ", "R", "RX", "RY", "RZ", 
+                    "MXX", "MYY", "MZZ", "MPP", "SPP", "SPP_DAG"}
+
 
 stim2qs_GATES = {
-    "I":"I", "X":"X", "Y":"Y", "Z":"Z",
-    "H":"H", "S":"S", "S_DAG":"Sd",
-    "SQRT_X":"Q", "SQRT_X_DAG":"Qd", "SQRT_Y":"R", "SQRT_Y_DAG":"Rd", "SQRT_Z":"S", "SQRT_Z_DAG":"Sd",
-    "CX":"CNOT", "CNOT":"CNOT"
+    "I":("I",), "X":("X",), "Y":("Y",), "Z":("Z",),
+    "H":("H",), "S":("S",), "S_DAG":("Sd",),
+    "SQRT_X":("Q",), "SQRT_X_DAG":("Qd",), "SQRT_Y":("R",), "SQRT_Y_DAG":("Rd",), "SQRT_Z":("S",), "SQRT_Z_DAG":("Sd",),
+    "CX":("CNOT",), "CNOT":("CNOT",),
+    "M":("measure",), "R":("init",), "MR":("measure", "init"), "RX":("init", "H"), "MX": ("H", "measure")
 }
 
 qs2stim_GATES = {
@@ -129,7 +145,7 @@ def draw_circuit(circuit, path=None, scale=2):
     return svg
 
 def pair_elements(lst): # Helper function for converting 2 qubit gates from QSample to STIM
-    return [(lst[i], lst[i + 1]) for i in range(0, len(lst), 2)]
+    return [{(lst[i], lst[i + 1])} for i in range(0, len(lst), 2)]
 
 # %% ../nbs/03_circuit.ipynb 7
 class Circuit(MutableSequence):
@@ -163,121 +179,84 @@ class Circuit(MutableSequence):
         noisy : bool
             If true, circuit is subject to noise during sampling
         """
-        if isinstance(ticks, str): # If input is a STIM circuit
-            self._ticks = ["foo"]
-            
-            for instruction in ticks.split('\n'):
-                instruction_list = instruction.split(' ')
-                is_target = False
-                target_list = []
-                for i in instruction_list:
-                    if len(i)!=0 and not is_target:
-                        name = i
-                        is_target = True
-                    elif len(i)!=0:
-                        target_list.append(int(i))
-                            
-                if name in GATES_stim["q1"]:
-                    try:
-                        qs_gate = stim2qs_GATES[name]
-                    except KeyError:
-                        print("Gate {} not implemented in QSample".format(name))
-                        break
-                    
-                    targets = set()
-                    for target in target_list:
-                        targets.update({target})
-                    tick = {qs_gate: targets}
-                    self._ticks.insert(-1, tick)
-
-                elif name in GATES_stim["q2"]:
-                    try:
-                        qs_gate = stim2qs_GATES[name]
-                    except KeyError:
-                        print("Gate {} not implemented in QSample".format(name))
-                        break
-
-                    for target in pair_elements(target_list):
-                        tick = {qs_gate: {target}}
-                        self._ticks.insert(-1, tick)
-
-                elif name in GATES_stim["meas"]:
-                    targets = set()
-                    for target in target_list:
-                        targets.update({target})
-
-                    if name=="M":
-                        self._ticks.insert(-1, {"measure": targets})
-                    elif name=="R":
-                        self._ticks.insert(-1, {"init": targets})
-                    elif name=="MR":
-                        self._ticks.insert(-1, {"measure": targets})
-                        self._ticks.insert(-1, {"init": targets})
-                    else:
-                        print("Gate {} not implemented in QSample".format(name))
-                        break
-            self.__delitem__(-1)
-
-        else:
-            self._ticks = ticks if ticks else [] # Must do this way, else keeps appending to same instance
+        self._ticks = ticks if ticks else [] # Must do this way, else keeps appending to same instance
         self.noisy = noisy
     
+    
+    
     def from_stim_circuit(self, stim_str):
-        ticks = stim_str
+        if isinstance(stim_str, stim.Circuit):
+            self.dem = stim_str.detector_error_model()
+            stim_str = repr(stim_str)
+        else:
+            self.dem = stim.Circuit(stim_str).detector_error_model()
         self._ticks = ["foo"]
-            
-        for instruction in ticks.split('\n'):
+        
+        
+        repeat_instruction = False
+        n_repeats = 1
+        tick_list = []
+        
+        name = None
+        
+        for instruction in stim_str.split('\n'):
             instruction_list = instruction.split(' ')
+            
             is_target = False
+            valid_gate = False
             target_list = []
+            
             for i in instruction_list:
-                if len(i)!=0 and not is_target:
+                if len(i)!=0 and not is_target: # First non-empty element in array is the gate name
                     name = i
                     is_target = True
-                elif len(i)!=0:
+                    
+                    if name == "REPEAT":    # Open repeat block
+                        repeat_instruction = True
+                    elif name == "}":       # Close repeat block
+                        repeat_instruction = False
+                        
+                    elif name in GATES_stim_unpacked:
+                        valid_gate=True
+                    
+                    
+                
+                elif len(i)!=0 and (name=="REPEAT"): # The following number is the number of repetitions
+                    try:
+                        n_repeats = int(i)
+                    except: # It is an opening bracket '{'
+                        pass 
+                
+                elif len(i)!=0 and valid_gate and is_target and not (name=="REPEAT"):  # The following number is a gate target
                     target_list.append(int(i))
 
-            if name in GATES_stim["q1"]:
+                    
+                    
+            if valid_gate:  # If it is an actual gate in STIM, not an instruction like 'DETECTOR' or 'X_ERROR', add equivalent qsample gate and target to gate buffer
                 try:
-                    qs_gate = stim2qs_GATES[name]
+                    qs_gates = stim2qs_GATES[name]
                 except KeyError:
-                    raise ValueError(f"No correspondence found for: {name}")
+                    print("Gate {} not implemented in QSample".format(name))
                     break
-
-                targets = set()
-                for target in target_list:
-                    targets.update({target})
-                tick = {qs_gate: targets}
-                self._ticks.insert(-1, tick)
-
-            elif name in GATES_stim["q2"]:
-                try:
-                    qs_gate = stim2qs_GATES[name]
-                except KeyError:
-                    raise ValueError(f"No correspondence found for: {name}")
-                    break
-
-                for target in pair_elements(target_list):
-                    tick = {qs_gate: {target}}
-                    self._ticks.insert(-1, tick)
-
-            elif name in GATES_stim["meas"]:
-                targets = set()
-                for target in target_list:
-                    targets.update({target})
-
-                if name=="M":
-                    self._ticks.insert(-1, {"measure": targets})
-                elif name=="R":
-                    self._ticks.insert(-1, {"init": targets})
-                elif name=="MR":
-                    self._ticks.insert(-1, {"measure": targets})
-                    self._ticks.insert(-1, {"init": targets})
+                        
+                if name in GATES_stim["q2"]:
+                    target_list = pair_elements(target_list)
                 else:
-                    raise ValueError(f"No correspondence found for: {name}")
-                    break
-        self.__delitem__(-1)
-        return self
+                    target_list = [set(target_list)]
+                for gate in qs_gates:
+                    for target in target_list:
+                        tick_list.append({gate: target})
+                        
+            if not repeat_instruction: # Apply gates from gate buffer and reset repeat block
+                for j in range(n_repeats):
+                    for tick in tick_list:
+                        self._ticks.insert(-1, tick)
+                n_repeats = 1
+                tick_list = []
+                
+
+        self.__delitem__(-1) # Remove foo gate
+        return self  
     
     def from_qasm_circuit(self, qasm_str):
         qc = qiskit.QuantumCircuit.from_qasm_str(qasm_str)
@@ -446,51 +425,3 @@ def qs2stim(circuit):
                 stim_circuit+=(instruction+"\n")
                 
     return stim_circuit
-
-
-def stim2qs(circuit, noisy=True):
-    qs_circuit = Circuit([{"I": {1}}], noisy=noisy)
-    for instruction in circuit:
-        name = instruction.name
-        targets = set()
-        if name in GATES_stim["q1"]:
-            try:
-                qs_gate = stim2qs_GATES[name]
-            except KeyError:
-                print("Gate {} not implemented in QSample".format(name))
-                break
-                
-            for target in instruction.target_groups():
-                targets.update({target[0].value})
-            tick = {qs_gate: targets}
-            qs_circuit.insert(-1, tick)
-        
-        elif name in GATES_stim["q2"]:
-            try:
-                qs_gate = stim2qs_GATES[name]
-            except KeyError:
-                print("Gate {} not implemented in QSample".format(name))
-                break
-            
-            for target in instruction.target_groups():
-                tick = {qs_gate: {(target[0].value, target[1].value)}}
-                qs_circuit.insert(-1, tick)
-            
-        elif name in GATES_stim["meas"]:
-            targets = set()
-            for target in instruction.target_groups():
-                targets.update({target[0].value})
-                
-            if name=="M":
-                qs_circuit.insert(-1, {"measure": targets})
-            elif name=="R":
-                qs_circuit.insert(-1, {"init": targets})
-            elif name=="MR":
-                qs_circuit.insert(-1, {"measure": targets})
-                qs_circuit.insert(-1, {"init": targets})
-            else:
-                print("Gate {} not implemented in QSample".format(name))
-                break
-        
-        #qs_circuit.__delitem__(2)
-    return qs_circuit
