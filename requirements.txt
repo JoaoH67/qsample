@@ -1,0 +1,17 @@
+# Core Python packages
+numpy
+scipy
+matplotlib
+
+# nbdev dependencies
+nbdev
+fastcore
+
+# Quarto for rendering
+quarto
+
+# Optional: any other libraries your notebooks import
+# For example, if you use pandas or qiskit, add them:
+# pandas
+# qiskit
+
