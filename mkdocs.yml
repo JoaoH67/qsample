@@ -1,0 +1,7 @@
+site_name: Qsample
+site_url: https://JoaoH67.github.io/qsample
+nav:
+  - Home: index.md
+theme:
+  name: material
+docs_dir: _docs
