@@ -6,6 +6,7 @@ website:
       - section: examples
         contents:
           - examples/GHZ.ipynb
+          - examples/PyMatching.ipynb
           - examples/Steane.ipynb
           - examples/Surface_code.ipynb
           - examples/Teleportation.ipynb

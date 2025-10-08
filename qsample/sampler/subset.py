@@ -141,17 +141,12 @@ class SubsetSampler:
             state = self.simulator(len(self.protocol.qubits)) # init state
             msmt_hist = {} # init measurement history
             tnode = None # init tree node
-            print('\n')
+           
             while True:
                 callbacks.on_circuit_begin()
              
-                
                 pnode, circuit = self.protocol.successor(pnode, msmt_hist)
-                
-             
-         
                 tnode = self.tree.add(name=pnode, parent=tnode, node_type=Variable)
-                print(tnode)
                 tnode.count += 1
                                 
                 path_weight = self.tree.path_weight(tnode)
@@ -164,21 +159,15 @@ class SubsetSampler:
                         tnode.invariant = True
                 except:
                     pass
+
                 if circuit != None:
-                    
                     tnode.circuit_id = circuit.id
                     
                     if not circuit.noisy:
-                        
-                             
-
                         msmt = state.run(circuit)
-
                         # add 0-subset for not noisy circuits
                         tnode = self.tree.add(name=(0,), parent=tnode, node_type=Constant, const_val=1)
                         tnode.count += 1
-                        
-                        
                     else:
                         
                         # Circuit node
@@ -198,9 +187,7 @@ class SubsetSampler:
                                             self.tree.add(name='δ', node_type=Delta, parent=tnode_)
                         self.tree.add(name='δ', node_type=Delta, parent=tnode)
                         subset = self._choose_subset(tnode, circuit)
-                        #print(subset)
-                        #fault_locs = self.err_model.choose_w(self.partitions[circuit.id], subset)
-                        fault_locs = self.err_model.choose_w(self.partitions[circuit.id], (1,))
+                        fault_locs = self.err_model.choose_w(self.partitions[circuit.id], subset)
                       
                         fault_circuit = self.err_model.run(circuit, fault_locs)
                         
@@ -210,7 +197,7 @@ class SubsetSampler:
                         
                         # Subset node
                         path_weight = self.tree.path_weight(tnode)
-                        print(path_weight)
+                      
                         # See App. B4 Case (I)
                         if path_weight == 0:
                             pass

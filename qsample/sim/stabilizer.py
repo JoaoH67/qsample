@@ -27,7 +27,6 @@ class ChpSimulator:
     """
 
     def __init__(self, num_qubits):
-        print(num_qubits)
         self._n = num_qubits
         self._table = np.eye(2 * num_qubits + 1, dtype=bool) # np.bool -> bool
         self._x = self._table[:, :self._n]

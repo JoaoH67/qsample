@@ -10,7 +10,6 @@ from functools import cached_property
 import numpy as np
 import itertools as it
 import pydot
-import stim
 
 from fastcore.test import *
 
