@@ -1,9 +1,9 @@
 project:
-  output-dir: docs
+  output-dir: _docs
 
 website:
-  title: "qsample"
-  site-url: "https://dpwinter.github.io/qsample/"
-  description: "Efficient sampling of noisy quantum circuits and protocols"
+  title: "Qsample"
+  site-url: "https://JoaoH67.github.io/qsample"
+  description: "Python library to sample from quantum circuits and protocols"
   repo-branch: master
-  repo-url: "https://github.com/dpwinter/qsample/tree/master/"
+  repo-url: "https://github.com/JoaoH67/qsample"
